@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "http://localhost:8080";
+const API = "https://splitwisebackend-production-5b36.up.railway.app";
 
 // ─── API HELPERS ────────────────────────────────────────────────────────────
 const api = {

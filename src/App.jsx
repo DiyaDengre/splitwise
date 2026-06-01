@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "https://splitwisebackend-production-5b36.up.railway.app";
+const API = "https://render.com/docs/web-services#port-binding";
 
 // ─── API HELPERS ────────────────────────────────────────────────────────────
 const api = {

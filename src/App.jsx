@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "https://render.com/docs/web-services#port-binding";
+const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ────────────────────────────────────────────────────────────
 const api = {

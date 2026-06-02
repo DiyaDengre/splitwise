@@ -4,6 +4,8 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
+
+
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -59,24 +61,80 @@ const styles = `
 
   @media (max-width: 768px) {
     .mobile-bar { display: flex; }
-    .sidebar { transform: translateX(-100%); }
-    .sidebar.open { transform: translateX(0); }
-    .main { margin-left: 0; padding: 80px 16px 24px; }
-    .stats-row { grid-template-columns: 1fr !important; }
+    .sidebar { transform: translateX(-100%); box-shadow: none; }
+    .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+    .main { margin-left: 0; padding: 72px 14px 32px; }
+
+    /* Grid fixes */
+    .stats-row { grid-template-columns: 1fr 1fr !important; gap: 10px; }
     .two-col { grid-template-columns: 1fr !important; }
     .how-grid { grid-template-columns: 1fr 1fr !important; }
-    .bal-row { flex-wrap: wrap; gap: 10px; }
-    .bal-right { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; }
-    .page-top { flex-direction: column; gap: 14px; }
+    .groups-grid { grid-template-columns: 1fr !important; }
+
+    /* Page header stacks */
+    .page-top { flex-direction: column; gap: 10px; align-items: stretch; }
     .page-top .btn { width: 100%; justify-content: center; }
-    .modal { padding: 24px 18px; }
-    .member-pick-row { flex-wrap: wrap; }
-    .member-pick-row .form-input { width: 100% !important; }
+    .page-title { font-size: 22px; }
+
+    /* Cards */
+    .card { padding: 14px; }
+    .stat-box { padding: 14px; }
+    .stat-val { font-size: 22px; }
+    .stat-label { font-size: 10px; }
+
+    /* Tabs full width */
     .tabs { width: 100%; }
-    .tab { flex: 1; text-align: center; padding: 8px 10px; font-size: 12px; }
+    .tab { flex: 1; text-align: center; padding: 7px 6px; font-size: 11px; }
+
+    /* Expense rows */
+    .exp-icon { width: 32px; height: 32px; font-size: 14px; }
+    .exp-amt { font-size: 14px; }
+    .exp-desc { font-size: 13px; }
+
+    /* Balance rows — stack vertically */
+    .bal-row { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+    .bal-info { flex-basis: calc(100% - 52px); }
+    .bal-right { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+    .bal-amt { font-size: 15px; }
+    .settle-inp { width: 80px; font-size: 12px; }
+
+    /* Modal full screen on phone */
+    .overlay { padding: 0; align-items: flex-end; }
+    .modal { border-radius: 20px 20px 0 0; max-height: 95vh; padding: 20px 16px 32px; }
+    .modal-title { font-size: 17px; margin-bottom: 16px; }
+    .modal-footer { flex-direction: column-reverse; }
+    .modal-footer .btn { width: 100%; }
+
+    /* Form inside modal */
+    .member-pick-row { gap: 8px; }
+    .member-pick-row input { width: 100px !important; }
+    .alert { font-size: 12px; padding: 8px 12px; }
+    .form-input { font-size: 14px; padding: 10px 12px; }
+
+    /* Auth card */
+    .auth-card { padding: 28px 18px; border-radius: 16px; }
+    .auth-logo { font-size: 22px; }
+
+    /* Invitations */
+    .inv-row { gap: 8px; }
+    .inv-actions { flex-shrink: 0; }
+
+    /* Group card */
+    .group-card { padding: 14px; }
     .group-name { font-size: 15px; }
-    .exp-amt { font-size: 15px; }
-    .auth-card { padding: 32px 20px; }
+
+    /* Hide group ID on mobile */
+    .group-id { display: none; }
+
+    /* Sidebar user section smaller */
+    .sidebar-avatar { width: 30px; height: 30px; font-size: 13px; }
+    .sidebar-name { font-size: 13px; }
+    .sidebar-email { font-size: 11px; }
+  }
+
+  @media (max-width: 380px) {
+    .stats-row { grid-template-columns: 1fr !important; }
+    .stat-val { font-size: 20px; }
   }
 
   /* ── Sidebar internals ── */
@@ -443,17 +501,20 @@ function ExpensesPage({ user, showToast }) {
 
   // Recalculate equal split amounts when total amount changes
   const handleAmountChange = (val) => {
-    const total = parseFloat(val) || 0;
-    const count = form.customSplits.length; // number of non-payer members
-    const each = count > 0 ? (total / count).toFixed(2) : "0.00";
-    setForm(f => ({
-      ...f,
-      amount: val,
-      customSplits: f.customSplits.map(s => ({
-        ...s,
-        amount: f.splitType === "EQUAL" ? each : s.amount,
-      })),
-    }));
+    // FIX: use functional update so we always get fresh customSplits
+    setForm(f => {
+      const total = parseFloat(val) || 0;
+      const count = f.customSplits.length;
+      const each = count > 0 ? (total / count).toFixed(2) : "0.00";
+      return {
+        ...f,
+        amount: val,
+        customSplits: f.customSplits.map(s => ({
+          ...s,
+          amount: f.splitType === "EQUAL" ? each : s.amount,
+        })),
+      };
+    });
   };
 
   const handleSplitTypeChange = (type) => {
@@ -478,8 +539,9 @@ function ExpensesPage({ user, showToast }) {
 
     if (form.splitType === "CUSTOM") {
       const customTotal = form.customSplits.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
-      if (Math.abs(customTotal - total) > 0.01)
-        return showToast(`Split total ₹${customTotal.toFixed(2)} ≠ expense ₹${total.toFixed(2)}`, "error");
+      // FIX: only block if split total EXCEEDS expense amount, allow less (payer covers the rest)
+      if (customTotal > total + 0.01)
+        return showToast(`Split total ₹${customTotal.toFixed(2)} cannot exceed expense ₹${total.toFixed(2)}`, "error");
     }
 
     setLoading(true);

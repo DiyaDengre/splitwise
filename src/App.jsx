@@ -4,8 +4,6 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
-
-
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -487,24 +485,24 @@ function ExpensesPage({ user, showToast }) {
   useEffect(() => { if (selectedGroup) loadData(selectedGroup.id); }, [selectedGroup, loadData]);
 
   const openAddModal = () => {
-    // Only non-payer members — exclude current user
-    const members = (selectedGroup?.members || []).filter(m => m.id !== user.id);
-    const count = members.length;
+    const allMembers = (selectedGroup?.members || []);
+    const nonPayers = allMembers.filter(m => m.id !== user.id);
+    // totalMemberCount = ALL members including payer (for equal split division)
+    const totalCount = allMembers.length;
     setForm({
       description: "", amount: "", splitType: "EQUAL",
-      // For EQUAL, amounts are empty until user types total
-      customSplits: members.map(m => ({ userId: m.id, name: m.name, amount: "" })),
-      memberCount: count,
+      customSplits: nonPayers.map(m => ({ userId: m.id, name: m.name, amount: "" })),
+      totalMemberCount: totalCount,
     });
     setShowAdd(true);
   };
 
   // Recalculate equal split amounts when total amount changes
   const handleAmountChange = (val) => {
-    // FIX: use functional update so we always get fresh customSplits
     setForm(f => {
       const total = parseFloat(val) || 0;
-      const count = f.customSplits.length;
+      // Divide by ALL members (payer + non-payers) — equal split means everyone pays same
+      const count = f.totalMemberCount || f.customSplits.length || 1;
       const each = count > 0 ? (total / count).toFixed(2) : "0.00";
       return {
         ...f,
@@ -518,17 +516,19 @@ function ExpensesPage({ user, showToast }) {
   };
 
   const handleSplitTypeChange = (type) => {
-    const total = parseFloat(form.amount) || 0;
-    const count = form.customSplits.length;
-    const each = count > 0 ? (total / count).toFixed(2) : "";
-    setForm(f => ({
-      ...f,
-      splitType: type,
-      customSplits: f.customSplits.map(s => ({
-        ...s,
-        amount: type === "EQUAL" ? each : "",
-      })),
-    }));
+    setForm(f => {
+      const total = parseFloat(f.amount) || 0;
+      const count = f.totalMemberCount || f.customSplits.length || 1;
+      const each = count > 0 ? (total / count).toFixed(2) : "";
+      return {
+        ...f,
+        splitType: type,
+        customSplits: f.customSplits.map(s => ({
+          ...s,
+          amount: type === "EQUAL" ? each : "",
+        })),
+      };
+    });
   };
 
   const addExpense = async () => {
@@ -716,7 +716,7 @@ function ExpensesPage({ user, showToast }) {
                 Split Breakdown
                 {form.splitType === "EQUAL" && form.customSplits.length > 0 && form.amount &&
                   <span style={{ color: "var(--accent)", marginLeft: 8, textTransform: "none", fontSize: 12 }}>
-                    ₹{(parseFloat(form.amount) / form.customSplits.length).toFixed(2)} each
+                    ₹{(parseFloat(form.amount) / (form.totalMemberCount || form.customSplits.length)).toFixed(2)} each (incl. you)
                   </span>
                 }
               </label>

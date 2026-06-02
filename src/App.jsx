@@ -4,6 +4,8 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
+
+
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -21,13 +23,13 @@ const api = {
 };
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #0f0f11; --surface: #18181c; --surface2: #222228; --border: #2e2e38;
     --accent: #7c6af7; --accent2: #f97316; --green: #22c55e; --red: #ef4444;
     --text: #f0f0f5; --muted: #6b6b7e;
-    --font-head: 'Syne', sans-serif; --font-body: 'DM Sans', sans-serif;
+    --font-head: 'Syne', sans-serif; --font-body: 'DM Sans', sans-serif; --font-num: 'Space Grotesk', sans-serif;
     --radius: 14px; --radius-sm: 8px;
     --sidebar-w: 220px;
   }
@@ -137,6 +139,7 @@ const styles = `
 
   /* ── Sidebar internals ── */
   .sidebar-inner { display: flex; flex-direction: column; height: 100%; padding: 24px 0; }
+  .num { font-family: var(--font-num); }
   .logo { font-family: var(--font-head); font-size: 20px; font-weight: 800; padding: 0 20px 20px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
   .logo span { color: var(--accent); }
   .logo em { color: var(--accent2); font-style: normal; }
@@ -194,7 +197,7 @@ const styles = `
   .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 24px; }
   .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
   .stat-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-  .stat-val { font-family: var(--font-head); font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+  .stat-val { font-family: var(--font-num); font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
   .green { color: var(--green); } .red { color: var(--red); }
 
   /* ── Groups ── */
@@ -216,7 +219,7 @@ const styles = `
   .exp-info { flex: 1; min-width: 0; }
   .exp-desc { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .exp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .exp-amt { font-family: var(--font-head); font-weight: 800; font-size: 16px; flex-shrink: 0; }
+  .exp-amt { font-family: var(--font-num); font-weight: 700; font-size: 16px; flex-shrink: 0; }
 
   /* ── Balance rows ── */
   .bal-row { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--border); }
@@ -229,7 +232,7 @@ const styles = `
   .bal-main strong { color: var(--accent); }
   .bal-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
   .bal-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
-  .bal-amt { font-family: var(--font-head); font-weight: 800; font-size: 17px; }
+  .bal-amt { font-family: var(--font-num); font-weight: 700; font-size: 17px; }
   .bal-amt.owe { color: var(--red); }
   .bal-amt.get { color: var(--green); }
   .settle-row { display: flex; align-items: center; gap: 6px; }
@@ -395,11 +398,34 @@ function GroupsPage({ user, showToast }) {
   const [showCreate, setShowCreate] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null); // clicked group
+  const [groupExpenses, setGroupExpenses] = useState([]);
+  const [expLoading, setExpLoading] = useState(false);
 
   const load = useCallback(() => {
     api.get(`/api/groups/user/${user.id}`).then(setGroups).catch(() => {});
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
+
+  const openGroup = async (g) => {
+    setSelectedGroup(g);
+    setExpLoading(true);
+    try {
+      const res = await api.get(`/api/expenses/group/${g.id}`);
+      setGroupExpenses(Array.isArray(res) ? res : []);
+    } catch { setGroupExpenses([]); }
+    setExpLoading(false);
+  };
+
+  const leaveGroup = async (g) => {
+    if (!window.confirm(`Leave "${g.groupName}"? You will lose access.`)) return;
+    try {
+      await api.postParams("/api/groups/leave", { groupId: g.id, userId: user.id });
+      load();
+      if (selectedGroup?.id === g.id) setSelectedGroup(null);
+      showToast("You left the group.", "success");
+    } catch { showToast("Could not leave group", "error"); }
+  };
 
   const create = async () => {
     if (!groupName.trim()) return;
@@ -420,26 +446,78 @@ function GroupsPage({ user, showToast }) {
       <div className="page-top">
         <div>
           <div className="page-title">My Groups</div>
-          <div className="page-sub">All your expense groups</div>
+          <div className="page-sub">Click a group to see its expenses</div>
         </div>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Group</button>
       </div>
       <div className="alert alert-info" style={{ marginBottom: 20 }}>
         💡 To add members, go to <strong>Invitations</strong> and send an invite using their email.
       </div>
-      {groups.length === 0 ? (
-        <div className="empty"><div className="empty-icon">👥</div><div>No groups yet. Create your first one!</div></div>
-      ) : (
-        <div className="groups-grid">
-          {groups.map(g => (
-            <div key={g.id} className="group-card">
-              <div className="group-name">{g.groupName}</div>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{g.members?.length || 0} member(s)</div>
-              <div>{g.members?.map(m => <span key={m.id} className="chip">{m.name}</span>)}</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: selectedGroup ? "1fr 1fr" : "1fr", gap: 20 }}>
+        {/* Left: groups list */}
+        <div>
+          {groups.length === 0 ? (
+            <div className="empty"><div className="empty-icon">👥</div><div>No groups yet. Create your first one!</div></div>
+          ) : (
+            <div className="groups-grid" style={{ gridTemplateColumns: "1fr" }}>
+              {groups.map(g => (
+                <div key={g.id}
+                  className="group-card"
+                  style={{ cursor: "pointer", borderColor: selectedGroup?.id === g.id ? "var(--accent)" : undefined, background: selectedGroup?.id === g.id ? "rgba(124,106,247,0.06)" : undefined }}
+                  onClick={() => openGroup(g)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div className="group-name">{g.groupName}</div>
+                    <button
+                      className="btn btn-danger btn-xs"
+                      onClick={e => { e.stopPropagation(); leaveGroup(g); }}
+                      title="Leave group">
+                      Leave
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 10px" }}>{g.members?.length || 0} member(s)</div>
+                  <div>{g.members?.map(m => <span key={m.id} className="chip">{m.name}</span>)}</div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        {/* Right: group expenses panel */}
+        {selectedGroup && (
+          <div className="card" style={{ alignSelf: "flex-start" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-head)", fontSize: 16, fontWeight: 700 }}>{selectedGroup.groupName}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>All Expenses</div>
+              </div>
+              <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18 }}
+                onClick={() => setSelectedGroup(null)}>✕</button>
+            </div>
+
+            {expLoading ? (
+              <div style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>Loading...</div>
+            ) : groupExpenses.length === 0 ? (
+              <div className="empty" style={{ padding: "20px 0" }}>
+                <div className="empty-icon">💸</div>
+                <div>No expenses yet in this group</div>
+              </div>
+            ) : (
+              groupExpenses.map((e, i) => (
+                <div key={i} className="exp-row">
+                  <div className="exp-icon">💳</div>
+                  <div className="exp-info">
+                    <div className="exp-desc">{e.description}</div>
+                    <div className="exp-meta">Paid by <strong style={{ color: "var(--accent)" }}>{e.paidBy}</strong></div>
+                  </div>
+                  <div className="exp-amt" style={{ fontFamily: "var(--font-num)" }}>₹{parseFloat(e.amount).toFixed(2)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {showCreate && (
         <div className="overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -487,12 +565,12 @@ function ExpensesPage({ user, showToast }) {
   const openAddModal = () => {
     const allMembers = (selectedGroup?.members || []);
     const nonPayers = allMembers.filter(m => m.id !== user.id);
-    // totalMemberCount = ALL members including payer (for equal split division)
-    const totalCount = allMembers.length;
+    const totalCount = allMembers.length; // ALL members including payer
+    console.log("Group members:", allMembers.map(m=>m.name), "total:", totalCount);
     setForm({
       description: "", amount: "", splitType: "EQUAL",
       customSplits: nonPayers.map(m => ({ userId: m.id, name: m.name, amount: "" })),
-      totalMemberCount: totalCount,
+      totalMemberCount: totalCount, // used for equal split division
     });
     setShowAdd(true);
   };
@@ -501,9 +579,12 @@ function ExpensesPage({ user, showToast }) {
   const handleAmountChange = (val) => {
     setForm(f => {
       const total = parseFloat(val) || 0;
-      // Divide by ALL members (payer + non-payers) — equal split means everyone pays same
-      const count = f.totalMemberCount || f.customSplits.length || 1;
-      const each = count > 0 ? (total / count).toFixed(2) : "0.00";
+      // totalMemberCount = all members in group including payer
+      // If group has 3 members (A,B,C) and A paid 600 -> each owes 200
+      // We show B and C each owing 200 (A already paid)
+      const totalMembers = f.totalMemberCount > 0 ? f.totalMemberCount : (f.customSplits.length + 1);
+      const each = totalMembers > 0 ? (total / totalMembers).toFixed(2) : "0.00";
+      console.log("Equal split: total=", total, "members=", totalMembers, "each=", each);
       return {
         ...f,
         amount: val,
@@ -518,8 +599,8 @@ function ExpensesPage({ user, showToast }) {
   const handleSplitTypeChange = (type) => {
     setForm(f => {
       const total = parseFloat(f.amount) || 0;
-      const count = f.totalMemberCount || f.customSplits.length || 1;
-      const each = count > 0 ? (total / count).toFixed(2) : "";
+      const totalMembers = f.totalMemberCount > 0 ? f.totalMemberCount : (f.customSplits.length + 1);
+      const each = totalMembers > 0 ? (total / totalMembers).toFixed(2) : "";
       return {
         ...f,
         splitType: type,
@@ -539,9 +620,9 @@ function ExpensesPage({ user, showToast }) {
 
     if (form.splitType === "CUSTOM") {
       const customTotal = form.customSplits.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
-      // FIX: only block if split total EXCEEDS expense amount, allow less (payer covers the rest)
       if (customTotal > total + 0.01)
-        return showToast(`Split total ₹${customTotal.toFixed(2)} cannot exceed expense ₹${total.toFixed(2)}`, "error");
+        return showToast(`Total assigned (₹${customTotal.toFixed(2)}) exceeds expense (₹${total.toFixed(2)})`, "error");
+      // If customTotal < total, payer covers the rest — allowed
     }
 
     setLoading(true);
@@ -716,7 +797,7 @@ function ExpensesPage({ user, showToast }) {
                 Split Breakdown
                 {form.splitType === "EQUAL" && form.customSplits.length > 0 && form.amount &&
                   <span style={{ color: "var(--accent)", marginLeft: 8, textTransform: "none", fontSize: 12 }}>
-                    ₹{(parseFloat(form.amount) / (form.totalMemberCount || form.customSplits.length)).toFixed(2)} each (incl. you)
+                    ₹{(parseFloat(form.amount) / (form.totalMemberCount > 0 ? form.totalMemberCount : form.customSplits.length + 1)).toFixed(2)} each (incl. you)
                   </span>
                 }
               </label>

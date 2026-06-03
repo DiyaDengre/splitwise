@@ -4,8 +4,6 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
-
-
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -393,36 +391,37 @@ function Dashboard({ user }) {
 }
 
 // ─── GROUPS ───────────────────────────────────────────────────────────────────
-function GroupsPage({ user, showToast }) {
+function GroupsPage({ user, showToast, onViewExpenses }) {
   const [groups, setGroups] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState(null); // clicked group
-  const [groupExpenses, setGroupExpenses] = useState([]);
-  const [expLoading, setExpLoading] = useState(false);
 
   const load = useCallback(() => {
     api.get(`/api/groups/user/${user.id}`).then(setGroups).catch(() => {});
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
-  const openGroup = async (g) => {
-    setSelectedGroup(g);
-    setExpLoading(true);
+  const leaveGroup = async (e, g) => {
+    e.stopPropagation();
+    // Check if user has any pending balances in this group before leaving
     try {
-      const res = await api.get(`/api/expenses/group/${g.id}`);
-      setGroupExpenses(Array.isArray(res) ? res : []);
-    } catch { setGroupExpenses([]); }
-    setExpLoading(false);
-  };
-
-  const leaveGroup = async (g) => {
-    if (!window.confirm(`Leave "${g.groupName}"? You will lose access.`)) return;
+      const balances = await api.get(`/api/expenses/balances?groupId=${g.id}`);
+      const myBalances = Array.isArray(balances)
+        ? balances.filter(b => b.owesUserId === user.id || b.getsUser === user.name)
+        : [];
+      if (myBalances.length > 0) {
+        showToast("You cannot leave this group — you have pending balances. Settle up first!", "error");
+        return;
+      }
+    } catch {
+      showToast("Could not check balances. Try again.", "error");
+      return;
+    }
+    if (!window.confirm(`Leave "${g.groupName}"?`)) return;
     try {
       await api.postParams("/api/groups/leave", { groupId: g.id, userId: user.id });
       load();
-      if (selectedGroup?.id === g.id) setSelectedGroup(null);
       showToast("You left the group.", "success");
     } catch { showToast("Could not leave group", "error"); }
   };
@@ -446,7 +445,7 @@ function GroupsPage({ user, showToast }) {
       <div className="page-top">
         <div>
           <div className="page-title">My Groups</div>
-          <div className="page-sub">Click a group to see its expenses</div>
+          <div className="page-sub">Click a group to view its expenses</div>
         </div>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Group</button>
       </div>
@@ -454,69 +453,30 @@ function GroupsPage({ user, showToast }) {
         💡 To add members, go to <strong>Invitations</strong> and send an invite using their email.
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: selectedGroup ? "1fr 1fr" : "1fr", gap: 20 }}>
-        {/* Left: groups list */}
-        <div>
-          {groups.length === 0 ? (
-            <div className="empty"><div className="empty-icon">👥</div><div>No groups yet. Create your first one!</div></div>
-          ) : (
-            <div className="groups-grid" style={{ gridTemplateColumns: "1fr" }}>
-              {groups.map(g => (
-                <div key={g.id}
-                  className="group-card"
-                  style={{ cursor: "pointer", borderColor: selectedGroup?.id === g.id ? "var(--accent)" : undefined, background: selectedGroup?.id === g.id ? "rgba(124,106,247,0.06)" : undefined }}
-                  onClick={() => openGroup(g)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div className="group-name">{g.groupName}</div>
-                    <button
-                      className="btn btn-danger btn-xs"
-                      onClick={e => { e.stopPropagation(); leaveGroup(g); }}
-                      title="Leave group">
-                      Leave
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 10px" }}>{g.members?.length || 0} member(s)</div>
-                  <div>{g.members?.map(m => <span key={m.id} className="chip">{m.name}</span>)}</div>
-                </div>
-              ))}
+      {groups.length === 0 ? (
+        <div className="empty"><div className="empty-icon">👥</div><div>No groups yet. Create your first one!</div></div>
+      ) : (
+        <div className="groups-grid">
+          {groups.map(g => (
+            <div key={g.id} className="group-card"
+              style={{ cursor: "pointer" }}
+              onClick={() => onViewExpenses(g)}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                <div className="group-name">{g.groupName}</div>
+                <button className="btn btn-danger btn-xs"
+                  onClick={ev => leaveGroup(ev, g)}>
+                  Leave
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{g.members?.length || 0} member(s)</div>
+              <div>{g.members?.map(m => <span key={m.id} className="chip">{m.name}</span>)}</div>
+              <div style={{ marginTop: 14, fontSize: 12, color: "var(--accent)", fontWeight: 500 }}>
+                Tap to view expenses →
+              </div>
             </div>
-          )}
+          ))}
         </div>
-
-        {/* Right: group expenses panel */}
-        {selectedGroup && (
-          <div className="card" style={{ alignSelf: "flex-start" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <div style={{ fontFamily: "var(--font-head)", fontSize: 16, fontWeight: 700 }}>{selectedGroup.groupName}</div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>All Expenses</div>
-              </div>
-              <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18 }}
-                onClick={() => setSelectedGroup(null)}>✕</button>
-            </div>
-
-            {expLoading ? (
-              <div style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>Loading...</div>
-            ) : groupExpenses.length === 0 ? (
-              <div className="empty" style={{ padding: "20px 0" }}>
-                <div className="empty-icon">💸</div>
-                <div>No expenses yet in this group</div>
-              </div>
-            ) : (
-              groupExpenses.map((e, i) => (
-                <div key={i} className="exp-row">
-                  <div className="exp-icon">💳</div>
-                  <div className="exp-info">
-                    <div className="exp-desc">{e.description}</div>
-                    <div className="exp-meta">Paid by <strong style={{ color: "var(--accent)" }}>{e.paidBy}</strong></div>
-                  </div>
-                  <div className="exp-amt" style={{ fontFamily: "var(--font-num)" }}>₹{parseFloat(e.amount).toFixed(2)}</div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {showCreate && (
         <div className="overlay" onClick={() => setShowCreate(false)}>
@@ -539,7 +499,7 @@ function GroupsPage({ user, showToast }) {
 }
 
 // ─── EXPENSES ─────────────────────────────────────────────────────────────────
-function ExpensesPage({ user, showToast }) {
+function ExpensesPage({ user, showToast, preSelectedGroup, onGroupConsumed }) {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -550,7 +510,19 @@ function ExpensesPage({ user, showToast }) {
   const [settleState, setSettleState] = useState({});
   const [form, setForm] = useState({ description: "", amount: "", splitType: "EQUAL", customSplits: [] });
 
-  useEffect(() => { api.get(`/api/groups/user/${user.id}`).then(setGroups).catch(() => {}); }, [user.id]);
+  useEffect(() => {
+    api.get(`/api/groups/user/${user.id}`).then(gs => {
+      setGroups(gs);
+      // If coming from Groups page with a pre-selected group, auto-select it
+      if (preSelectedGroup) {
+        // Find the full group object from loaded list (has all member details)
+        const found = gs.find(g => g.id === preSelectedGroup.id);
+        setSelectedGroup(found || preSelectedGroup);
+        setTab("expenses");
+        if (onGroupConsumed) onGroupConsumed();
+      }
+    }).catch(() => {});
+  }, [user.id]);
 
   const loadData = useCallback((gId) => {
     api.get(`/api/expenses/group/${gId}`).then(setExpenses).catch(() => setExpenses([]));
@@ -937,6 +909,7 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "" });
+  const [preSelectedGroup, setPreSelectedGroup] = useState(null); // passed from Groups → Expenses
   const showToast = useCallback((msg, type = "success") => setToast({ msg, type }), []);
 
   const login = (u) => { localStorage.setItem("sw_user", JSON.stringify(u)); setUser(u); };
@@ -950,6 +923,13 @@ export default function App() {
   ];
 
   const goTo = (id) => { setPage(id); setSidebarOpen(false); };
+
+  // Called from GroupsPage when user clicks "View Expenses" on a group
+  const goToExpensesWithGroup = (group) => {
+    setPreSelectedGroup(group);
+    setPage("expenses");
+    setSidebarOpen(false);
+  };
 
   if (!user) return <><style>{styles}</style><AuthPage onLogin={login} /></>;
 
@@ -988,8 +968,8 @@ export default function App() {
 
         <div className="main">
           {page === "dashboard"   && <Dashboard user={user} />}
-          {page === "groups"      && <GroupsPage user={user} showToast={showToast} />}
-          {page === "expenses"    && <ExpensesPage user={user} showToast={showToast} />}
+          {page === "groups"      && <GroupsPage user={user} showToast={showToast} onViewExpenses={goToExpensesWithGroup} />}
+          {page === "expenses"    && <ExpensesPage user={user} showToast={showToast} preSelectedGroup={preSelectedGroup} onGroupConsumed={() => setPreSelectedGroup(null)} />}
           {page === "invitations" && <InvitationsPage user={user} showToast={showToast} />}
         </div>
       </div>

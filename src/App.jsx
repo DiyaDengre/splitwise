@@ -4,6 +4,10 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
+import { useState, useEffect, useCallback } from "react";
+
+const API = "http://localhost:8080";
+
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -320,7 +324,7 @@ function AuthPage({ onLogin }) {
         )}
         <div className="form-group">
           <label className="form-label">Email</label>
-          <input className="form-input" name="email" type="email" placeholder="you@example.com" value={form.email} onChange={h} />
+          <input className="form-input" name="email" type="email" placeholder="you@gmail.com" value={form.email} onChange={h} />
         </div>
         <div className="form-group">
           <label className="form-label">Password</label>
@@ -411,7 +415,7 @@ function GroupsPage({ user, showToast, onViewExpenses }) {
         ? balances.filter(b => b.owesUserId === user.id || b.getsUser === user.name)
         : [];
       if (myBalances.length > 0) {
-        showToast("You cannot leave this group — you have pending balances. Settle up first!", "error");
+        showToast("You cannot leave — you have pending balances. Settle up first!", "error");
         return;
       }
     } catch {
@@ -420,10 +424,11 @@ function GroupsPage({ user, showToast, onViewExpenses }) {
     }
     if (!window.confirm(`Leave "${g.groupName}"?`)) return;
     try {
-      await api.postParams("/api/groups/leave", { groupId: g.id, userId: user.id });
-      load();
-      showToast("You left the group.", "success");
-    } catch { showToast("Could not leave group", "error"); }
+      const res = await api.postParams("/api/groups/leave", { groupId: g.id, userId: user.id });
+      // FIX: immediately remove from local state — don't rely on load() alone
+      setGroups(prev => prev.filter(grp => grp.id !== g.id));
+      showToast(`You left "${g.groupName}" successfully.`, "success");
+    } catch { showToast("Could not leave group. Try again.", "error"); }
   };
 
   const create = async () => {
@@ -624,6 +629,10 @@ function ExpensesPage({ user, showToast, preSelectedGroup, onGroupConsumed }) {
   const settle = async (b, idx) => {
     const amt = parseFloat(settleState[idx]?.amount);
     if (!amt || amt <= 0) return showToast("Enter an amount first", "error");
+    // FIX: cannot pay more than what is owed
+    if (amt > parseFloat(b.amount) + 0.01) {
+      return showToast(`Cannot pay ₹${amt.toFixed(2)} — only ₹${parseFloat(b.amount).toFixed(2)} is owed`, "error");
+    }
     if (!b.splitId) return showToast("splitId missing — update BalanceDTO in backend", "error");
     setSettleState(p => ({ ...p, [idx]: { ...p[idx], loading: true } }));
     try {
@@ -721,8 +730,16 @@ function ExpensesPage({ user, showToast, preSelectedGroup, onGroupConsumed }) {
                       {iOwe && (
                         <div className="settle-row">
                           <input className="settle-inp" type="number" placeholder="₹ pay"
+                            min="0.01"
+                            max={parseFloat(b.amount)}
                             value={settleState[idx]?.amount || ""}
-                            onChange={e => setSettleState(p => ({ ...p, [idx]: { ...p[idx], amount: e.target.value } }))} />
+                            onChange={e => {
+                              const val = parseFloat(e.target.value);
+                              const max = parseFloat(b.amount);
+                              // Cap input at max owed — user cannot type more
+                              const capped = val > max ? String(max) : e.target.value;
+                              setSettleState(p => ({ ...p, [idx]: { ...p[idx], amount: capped } }));
+                            }} />
                           <button className="btn btn-success btn-xs"
                             disabled={settleState[idx]?.loading}
                             onClick={() => settle(b, idx)}>

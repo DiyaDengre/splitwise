@@ -4,10 +4,6 @@ const API = "https://splitwise-backend-nxy3.onrender.com";
 
 // ─── API HELPERS ───────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback } from "react";
-
-const API = "http://localhost:8080";
-
 const api = {
   post: (url, body) =>
     fetch(`${API}${url}`, {
@@ -294,6 +290,9 @@ function AuthPage({ onLogin }) {
   const submit = async () => {
     setError("");
     if (!form.email || !form.password) return setError("Email and password are required");
+    // Validate email format properly
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(form.email)) return setError("Please enter a valid email address (e.g. name@gmail.com)");
     setLoading(true);
     try {
       if (mode === "register") {
@@ -425,10 +424,18 @@ function GroupsPage({ user, showToast, onViewExpenses }) {
     if (!window.confirm(`Leave "${g.groupName}"?`)) return;
     try {
       const res = await api.postParams("/api/groups/leave", { groupId: g.id, userId: user.id });
-      // FIX: immediately remove from local state — don't rely on load() alone
+      // res is the updated group object (without the user) or could be null
+      // Only remove from UI if backend confirmed (no error property)
+      if (res && res.message) {
+        showToast(res.message, "error");
+        return;
+      }
+      // Success — remove from UI immediately
       setGroups(prev => prev.filter(grp => grp.id !== g.id));
-      showToast(`You left "${g.groupName}" successfully.`, "success");
-    } catch { showToast("Could not leave group. Try again.", "error"); }
+      showToast(`You left "${g.groupName}".`, "success");
+    } catch (err) {
+      showToast("Could not leave group — is the backend updated with the leave endpoint?", "error");
+    }
   };
 
   const create = async () => {
@@ -890,7 +897,7 @@ function InvitationsPage({ user, showToast }) {
           </div>
           <div className="form-group">
             <label className="form-label">Friend's Email</label>
-            <input className="form-input" type="email" placeholder="friend@example.com"
+            <input className="form-input" type="email" placeholder="friend@gmail.com"
               value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
               onKeyDown={e => e.key === "Enter" && sendInvite()} />
           </div>
